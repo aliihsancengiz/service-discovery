@@ -85,7 +85,7 @@ struct service_discovery
         auto msg_res = message_serdes::from_json<service_message>(std::string(recv_buf.data()));
         if (msg_res.is_some()) {
             auto msg = msg_res.unwrap();
-            auto cache_key = msg.uuid;
+            auto cache_key = msg.uuid();
 
             if (service_cache.has(cache_key)) {
                 msg.update_last_accessed();

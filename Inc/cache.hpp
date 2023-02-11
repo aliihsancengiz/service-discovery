@@ -1,6 +1,7 @@
 #pragma once
 #include "iostream"
 #include "service_message.hpp"
+
 template<typename value>
 struct expiry_policy
 {
@@ -21,7 +22,7 @@ bool time_based_expiry_policy<service_message>::is_expired(const service_message
 {
     auto _now = std::chrono::high_resolution_clock::now();
     auto dur = _now - msg.last_accessed();
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() >= msg.ttl_msec) {
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() >= msg.ttl_msec()) {
         return true;
     }
     return false;

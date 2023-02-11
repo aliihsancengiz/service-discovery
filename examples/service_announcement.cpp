@@ -8,19 +8,12 @@ int main()
 {
     try {
         boost::asio::io_service io_service;
-        service_message msg;
-        msg.name = "Sample Service Announcement";
-        msg.uuid = uuid::generate_uuid_v4();
-        msg.domain = "admin.udp.local";
-        msg.ttl_msec = 2000;
-        msg.update_last_accessed();
+        service_message msg("Sample Service Announcement", "admin.udp.local", 2000);
+        msg.add_metric(service_message_metric{"metric1", "value1"});
+        msg.add_metric(service_message_metric{"metric2", "value2"});
+        msg.add_metric(service_message_metric{"metric3", "value3"});
 
-        service_message msg2;
-        msg2.name = "Sample Service Announcement 2";
-        msg2.uuid = uuid::generate_uuid_v4();
-        msg2.domain = "_ali.local.udp";
-        msg2.ttl_msec = 1000;
-        msg2.update_last_accessed();
+        service_message msg2("Sample Service Announcement 2", "_ali.local.udp", 1000);
 
         connection_config cfg("224.0.0.251", 1223);
         service_announcement announcer(io_service, cfg);
