@@ -1,10 +1,11 @@
 #pragma once
 #include "cache.hpp"
 #include "connection_config.hpp"
+#include "defines.hpp"
 #include "service_message.hpp"
+
 #include <boost/array.hpp>
 #include <boost/bind.hpp>
-#include "defines.hpp"
 
 enum class DiscoveryEvent
 {
@@ -15,9 +16,25 @@ enum class DiscoveryEvent
 
 struct IServiceDiscovery
 {
-    virtual void onNewServiceDiscovered(const service_message& new_service) {};
-    virtual void onServiceGoodBye(const service_message& msg) {};
-    virtual void onHeartBeat(const service_message& msg) {};
+    typedef std::function<bool(const service_message&)> service_filter;
+    IServiceDiscovery(const service_filter& filter) : _filter(filter) {}
+    IServiceDiscovery()
+        : _filter([](const service_message&) {
+              return true;
+          })
+    {
+    }
+    virtual void onNewServiceDiscovered(const service_message& new_service){};
+    virtual void onServiceGoodBye(const service_message& msg){};
+    virtual void onHeartBeat(const service_message& msg){};
+
+    bool apply_filter(const service_message& msg)
+    {
+        return _filter(msg);
+    }
+
+  private:
+    service_filter _filter;
 };
 
 struct service_discovery
@@ -73,12 +90,12 @@ struct service_discovery
             if (service_cache.has(cache_key)) {
                 msg.update_last_accessed();
                 service_cache.update(cache_key, msg);
-                notifyObserver(msg, DiscoveryEvent::HEARTBEAT);
+                notify_observer(msg, DiscoveryEvent::HEARTBEAT);
             } else {
                 // New service discovered, emplace it to cache and notify observers
                 msg.update_last_accessed();
                 service_cache.add(cache_key, msg);
-                notifyObserver(msg, DiscoveryEvent::BIRTH);
+                notify_observer(msg, DiscoveryEvent::BIRTH);
             }
         }
         recv_buf.assign(0);
@@ -88,16 +105,20 @@ struct service_discovery
     void prune_cache(const boost::system::error_code& /*e*/)
     {
         for (const auto& entry : service_cache.prune_expired_entries()) {
-            notifyObserver(entry, DiscoveryEvent::DEATH);
+            notify_observer(entry, DiscoveryEvent::DEATH);
         }
-        cache_timer.expires_at(cache_timer.expiry() + boost::asio::chrono::milliseconds(SERVICE_DISCOVERY_CACHE_PRUNE_PERIOD));
+        cache_timer.expires_at(cache_timer.expiry() + boost::asio::chrono::milliseconds(
+                                                        SERVICE_DISCOVERY_CACHE_PRUNE_PERIOD));
         cache_timer.async_wait(
           boost::bind(&service_discovery::prune_cache, this, boost::asio::placeholders::error));
     }
 
-    void notifyObserver(const service_message& entry, const DiscoveryEvent& ev)
+    void notify_observer(const service_message& entry, const DiscoveryEvent& ev)
     {
         for (const auto& observer : observerMap) {
+            if (!observer->apply_filter(entry)) {
+                continue;
+            }
             if (ev == DiscoveryEvent::BIRTH) {
                 observer->onNewServiceDiscovered(entry);
             } else if (ev == DiscoveryEvent::DEATH) {

@@ -9,7 +9,7 @@ struct service_message
 {
     std::string name;
     std::string uuid;
-    std::string role;
+    std::string domain;
     size_t ttl;
 
     const auto& last_accessed() const
@@ -43,7 +43,7 @@ Option<service_message> from_json<service_message>(const std::string& json_str)
         nlohmann::json json_obj = nlohmann::json::parse(json_str);
         m.name = json_obj.at("name").get<decltype(m.name)>();
         m.uuid = json_obj.at("uuid").get<decltype(m.uuid)>();
-        m.role = json_obj.at("role").get<decltype(m.role)>();
+        m.domain = json_obj.at("domain").get<decltype(m.domain)>();
         m.ttl = json_obj.at("ttl").get<decltype(m.ttl)>();
     } catch (const std::exception& e) {
         return ret;
@@ -58,7 +58,7 @@ std::string to_json<service_message>(const service_message& obj)
     nlohmann::json json_obj;
     json_obj["name"] = obj.name;
     json_obj["uuid"] = obj.uuid;
-    json_obj["role"] = obj.role;
+    json_obj["domain"] = obj.domain;
     json_obj["ttl"] = obj.ttl;
 
     return json_obj.dump();

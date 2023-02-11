@@ -1,5 +1,6 @@
-#include "cache.hpp"
 #include "service_discovery.hpp"
+
+#include "cache.hpp"
 
 #include <boost/array.hpp>
 #include <boost/asio.hpp>
@@ -8,6 +9,7 @@
 
 struct ServiceDiscoveredLogger : IServiceDiscovery
 {
+    ServiceDiscoveredLogger(const service_filter& filter) : IServiceDiscovery(filter) {}
     void onNewServiceDiscovered(const service_message& msg) override
     {
         std::cout << "DISCOVERED.Service UUID : " << msg.uuid << std::endl;
@@ -29,7 +31,10 @@ int main()
         connection_config cfg("224.0.0.251", 1223);
         service_discovery disc(io_service, cfg);
 
-        disc.register_observer(std::make_shared<ServiceDiscoveredLogger>());
+        disc.register_observer(
+          std::make_shared<ServiceDiscoveredLogger>([](const service_message& msg) {
+              return msg.domain == "_ali.local.udp";
+          }));
 
         io_service.run();
     } catch (std::exception& e) {
