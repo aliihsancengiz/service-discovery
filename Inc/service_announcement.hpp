@@ -34,7 +34,7 @@ struct service_announcement
     {
         static uint64_t counter{0};
         for (auto service : _services) {
-            if (((counter * 1000) % service.ttl) == 0) {
+            if (((counter * 1000) % service.ttl_msec) == 0) {
                 boost::array<char, 128> send_buf = {{0}};
                 std::string message_str = message_serdes::to_json(service);
                 std::copy(message_str.begin(), message_str.end(), send_buf.begin());

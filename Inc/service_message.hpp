@@ -10,7 +10,7 @@ struct service_message
     std::string name;
     std::string uuid;
     std::string domain;
-    size_t ttl;
+    size_t ttl_msec;
 
     const auto& last_accessed() const
     {
@@ -44,7 +44,7 @@ Option<service_message> from_json<service_message>(const std::string& json_str)
         m.name = json_obj.at("name").get<decltype(m.name)>();
         m.uuid = json_obj.at("uuid").get<decltype(m.uuid)>();
         m.domain = json_obj.at("domain").get<decltype(m.domain)>();
-        m.ttl = json_obj.at("ttl").get<decltype(m.ttl)>();
+        m.ttl_msec = json_obj.at("ttl_msec").get<decltype(m.ttl_msec)>();
     } catch (const std::exception& e) {
         return ret;
     }
@@ -59,7 +59,7 @@ std::string to_json<service_message>(const service_message& obj)
     json_obj["name"] = obj.name;
     json_obj["uuid"] = obj.uuid;
     json_obj["domain"] = obj.domain;
-    json_obj["ttl"] = obj.ttl;
+    json_obj["ttl_msec"] = obj.ttl_msec;
 
     return json_obj.dump();
 }

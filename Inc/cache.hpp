@@ -21,7 +21,7 @@ bool time_based_expiry_policy<service_message>::is_expired(const service_message
 {
     auto _now = std::chrono::high_resolution_clock::now();
     auto dur = _now - msg.last_accessed();
-    if (std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() >= msg.ttl) {
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() >= msg.ttl_msec) {
         return true;
     }
     return false;
