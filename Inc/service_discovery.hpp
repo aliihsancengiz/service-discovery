@@ -2,10 +2,13 @@
 #include "cache.hpp"
 #include "connection_config.hpp"
 #include "defines.hpp"
+#include "discovery_socket.hpp"
 #include "service_message.hpp"
 
 #include <boost/array.hpp>
 #include <boost/bind.hpp>
+
+namespace service_discovery {
 
 enum class DiscoveryEvent
 {
@@ -37,23 +40,22 @@ struct IServiceDiscovery
     service_filter _filter;
 };
 
-struct service_discovery
+struct ServiceDiscovery : IPacketObserver
 {
-    service_discovery(boost::asio::io_service& io, const connection_config& cfg)
-        : io_service(io), socket(io), _cfg(cfg),
-          cache_timer(io, boost::asio::chrono::milliseconds(SERVICE_DISCOVERY_CACHE_PRUNE_PERIOD))
+    ServiceDiscovery(boost::asio::io_service& io, const connection_config& cfg)
+        : io_service(io), _socket(io, cfg),
+          cache_timer(io, boost::asio::chrono::milliseconds(ServiceDiscovery_CACHE_PRUNE_PERIOD))
     {
-        socket.open(boost::asio::ip::udp::v4());
-        socket.set_option(boost::asio::ip::udp::socket::reuse_address(true));
-        socket.bind(_cfg.listen_addr());
-        socket.set_option(
-          boost::asio::ip::multicast::join_group(_cfg.multicast_address().to_v4(), {}));
 
-        start_receive();
+        _socket.set_packet_observer(this);
         cache_timer.async_wait(
-          boost::bind(&service_discovery::prune_cache, this, boost::asio::placeholders::error));
+          boost::bind(&ServiceDiscovery::prune_cache, this, boost::asio::placeholders::error));
     }
 
+    ~ServiceDiscovery()
+    {
+        _socket.reset_packet_observer();
+    }
     void register_observer(const std::shared_ptr<IServiceDiscovery>& cb_obj)
     {
         observerMap.push_back(cb_obj);
@@ -62,28 +64,13 @@ struct service_discovery
   private:
     std::vector<std::shared_ptr<IServiceDiscovery>> observerMap;
     boost::asio::io_service& io_service;
-    boost::asio::ip::udp::socket socket;
-    const connection_config& _cfg;
+    DiscoverySocket _socket;
     Cache<std::string, service_message, time_based_expiry_policy<service_message>> service_cache;
-    std::string recv_buffer_str;
     boost::asio::steady_timer cache_timer;
 
-    void start_receive()
+    void process_packet(const std::string& recived_packet) override
     {
-		recv_buffer_str.resize(SERVICE_RECEIVE_BUFFER_LENGTH);
-        socket.async_receive(boost::asio::buffer(recv_buffer_str),
-                             boost::bind(&service_discovery::handle_receive, this,
-                                         boost::asio::placeholders::error,
-                                         boost::asio::placeholders::bytes_transferred));
-    }
-
-    void handle_receive(const boost::system::error_code& error, std::size_t bytes_transferred)
-    {
-        if (error) {
-            return;
-        }
-
-        auto msg_res = message_serdes::from_json<service_message>(recv_buffer_str);
+        auto msg_res = message_serdes::from_json<service_message>(recived_packet);
         if (msg_res.is_some()) {
             auto msg = msg_res.unwrap();
             auto cache_key = msg.uuid();
@@ -99,8 +86,6 @@ struct service_discovery
                 notify_observer(msg, DiscoveryEvent::BIRTH);
             }
         }
-        recv_buffer_str.clear();
-        start_receive();
     }
 
     void prune_cache(const boost::system::error_code& /*e*/)
@@ -109,9 +94,9 @@ struct service_discovery
             notify_observer(entry, DiscoveryEvent::DEATH);
         }
         cache_timer.expires_at(cache_timer.expiry() + boost::asio::chrono::milliseconds(
-                                                        SERVICE_DISCOVERY_CACHE_PRUNE_PERIOD));
+                                                        ServiceDiscovery_CACHE_PRUNE_PERIOD));
         cache_timer.async_wait(
-          boost::bind(&service_discovery::prune_cache, this, boost::asio::placeholders::error));
+          boost::bind(&ServiceDiscovery::prune_cache, this, boost::asio::placeholders::error));
     }
 
     void notify_observer(const service_message& entry, const DiscoveryEvent& ev)
@@ -130,3 +115,4 @@ struct service_discovery
         }
     }
 };
+}  // namespace service_discovery

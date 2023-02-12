@@ -16,7 +16,7 @@ int main()
         service_message msg2("Sample Service Announcement 2", "_ali.local.udp", 1000);
 
         connection_config cfg("224.0.0.251", 1223);
-        service_announcement announcer(io_service, cfg);
+        service_announcment::ServiceAnnouncement announcer(io_service, cfg);
         announcer.start_announce({msg, msg2});
         io_service.run();
 

@@ -16,9 +16,9 @@ std::string print_service_message(const service_message& msg)
     }
     return ss.str();
 }
-struct ServiceDiscoveredLogger : IServiceDiscovery
+struct ServiceDiscoveredLogger : service_discovery::IServiceDiscovery
 {
-    ServiceDiscoveredLogger(const service_filter& filter) : IServiceDiscovery(filter) {}
+    ServiceDiscoveredLogger(const service_filter& filter) : service_discovery::IServiceDiscovery(filter) {}
     void onNewServiceDiscovered(const service_message& msg) override
     {
         std::cout << "DISCOVERED. " << print_service_message(msg);
@@ -38,7 +38,7 @@ int main()
     try {
         boost::asio::io_service io_service;
         connection_config cfg("224.0.0.251", 1223);
-        service_discovery disc(io_service, cfg);
+        service_discovery::ServiceDiscovery disc(io_service, cfg);
 
         disc.register_observer(
           std::make_shared<ServiceDiscoveredLogger>([](const service_message& msg) {
