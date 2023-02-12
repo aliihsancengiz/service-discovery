@@ -2,20 +2,80 @@
 #include "cache.hpp"
 #include "connection_config.hpp"
 #include "defines.hpp"
-#include "discovery_socket.hpp"
+#include "periodic_timer.hpp"
 #include "service_message.hpp"
 
 #include <boost/array.hpp>
-#include <boost/bind.hpp>
 
 namespace service_discovery {
 
-enum class DiscoveryEvent
-{
-    BIRTH,
-    HEARTBEAT,
-    DEATH
-};
+namespace detail {
+
+    struct IPacketObserver
+    {
+        virtual void process_packet(const std::string& buffer) = 0;
+    };
+
+    struct DiscoverySocket
+    {
+        DiscoverySocket(boost::asio::io_service& io, const connection_config& cfg)
+            : io_service(io), socket(io), _cfg(cfg)
+        {
+            socket.open(boost::asio::ip::udp::v4());
+            socket.set_option(boost::asio::ip::udp::socket::reuse_address(true));
+            socket.bind(_cfg.listen_addr());
+            socket.set_option(
+              boost::asio::ip::multicast::join_group(_cfg.multicast_address().to_v4(), {}));
+            _packet_observer = nullptr;
+            start_receive();
+        }
+
+        void set_packet_observer(IPacketObserver* packet_observer)
+        {
+            _packet_observer = packet_observer;
+        }
+
+        void reset_packet_observer()
+        {
+            _packet_observer = nullptr;
+        }
+
+      private:
+        void start_receive()
+        {
+            recv_buffer_str.resize(SERVICE_RECEIVE_BUFFER_LENGTH);
+            socket.async_receive(boost::asio::buffer(recv_buffer_str),
+                                 boost::bind(&DiscoverySocket::handle_receive, this,
+                                             boost::asio::placeholders::error,
+                                             boost::asio::placeholders::bytes_transferred));
+        }
+        void handle_receive(const boost::system::error_code& error, std::size_t bytes_transferred)
+        {
+            if (error) {
+                return;
+            }
+            if (_packet_observer) {
+                _packet_observer->process_packet(recv_buffer_str);
+            }
+
+            recv_buffer_str.clear();
+            start_receive();
+        }
+        boost::asio::io_service& io_service;
+        boost::asio::ip::udp::socket socket;
+        const connection_config& _cfg;
+        std::string recv_buffer_str;
+        IPacketObserver* _packet_observer;
+    };
+
+    enum class DiscoveryEvent
+    {
+        BIRTH,
+        HEARTBEAT,
+        DEATH
+    };
+
+}  // namespace detail
 
 struct IServiceDiscovery
 {
@@ -40,16 +100,14 @@ struct IServiceDiscovery
     service_filter _filter;
 };
 
-struct ServiceDiscovery : IPacketObserver
+struct ServiceDiscovery : detail::IPacketObserver
 {
     ServiceDiscovery(boost::asio::io_service& io, const connection_config& cfg)
         : io_service(io), _socket(io, cfg),
-          cache_timer(io, boost::asio::chrono::milliseconds(ServiceDiscovery_CACHE_PRUNE_PERIOD))
+          _cache_prune_timer(io, SERVICE_DISCOVERY_CACHE_PRUNE_PERIOD)
     {
-
+        _cache_prune_timer.set_handler(std::bind(&ServiceDiscovery::prune_cache, this));
         _socket.set_packet_observer(this);
-        cache_timer.async_wait(
-          boost::bind(&ServiceDiscovery::prune_cache, this, boost::asio::placeholders::error));
     }
 
     ~ServiceDiscovery()
@@ -64,9 +122,9 @@ struct ServiceDiscovery : IPacketObserver
   private:
     std::vector<std::shared_ptr<IServiceDiscovery>> observerMap;
     boost::asio::io_service& io_service;
-    DiscoverySocket _socket;
+    detail::DiscoverySocket _socket;
     Cache<std::string, service_message, time_based_expiry_policy<service_message>> service_cache;
-    boost::asio::steady_timer cache_timer;
+    periodic_timer::PeriodicTimer _cache_prune_timer;
 
     void process_packet(const std::string& recived_packet) override
     {
@@ -78,38 +136,34 @@ struct ServiceDiscovery : IPacketObserver
             if (service_cache.has(cache_key)) {
                 msg.update_last_accessed();
                 service_cache.update(cache_key, msg);
-                notify_observer(msg, DiscoveryEvent::HEARTBEAT);
+                notify_observer(msg, detail::DiscoveryEvent::HEARTBEAT);
             } else {
                 // New service discovered, emplace it to cache and notify observers
                 msg.update_last_accessed();
                 service_cache.add(cache_key, msg);
-                notify_observer(msg, DiscoveryEvent::BIRTH);
+                notify_observer(msg, detail::DiscoveryEvent::BIRTH);
             }
         }
     }
 
-    void prune_cache(const boost::system::error_code& /*e*/)
+    void prune_cache()
     {
         for (const auto& entry : service_cache.prune_expired_entries()) {
-            notify_observer(entry, DiscoveryEvent::DEATH);
+            notify_observer(entry, detail::DiscoveryEvent::DEATH);
         }
-        cache_timer.expires_at(cache_timer.expiry() + boost::asio::chrono::milliseconds(
-                                                        ServiceDiscovery_CACHE_PRUNE_PERIOD));
-        cache_timer.async_wait(
-          boost::bind(&ServiceDiscovery::prune_cache, this, boost::asio::placeholders::error));
     }
 
-    void notify_observer(const service_message& entry, const DiscoveryEvent& ev)
+    void notify_observer(const service_message& entry, const detail::DiscoveryEvent& ev)
     {
         for (const auto& observer : observerMap) {
             if (!observer->apply_filter(entry)) {
                 continue;
             }
-            if (ev == DiscoveryEvent::BIRTH) {
+            if (ev == detail::DiscoveryEvent::BIRTH) {
                 observer->onNewServiceDiscovered(entry);
-            } else if (ev == DiscoveryEvent::DEATH) {
+            } else if (ev == detail::DiscoveryEvent::DEATH) {
                 observer->onServiceGoodBye(entry);
-            } else if (ev == DiscoveryEvent::HEARTBEAT) {
+            } else if (ev == detail::DiscoveryEvent::HEARTBEAT) {
                 observer->onHeartBeat(entry);
             }
         }

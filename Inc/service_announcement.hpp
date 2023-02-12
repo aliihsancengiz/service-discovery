@@ -2,11 +2,10 @@
 
 #include "connection_config.hpp"
 #include "defines.hpp"
+#include "periodic_timer.hpp"
 #include "service_message.hpp"
 
 #include <boost/array.hpp>
-#include <boost/bind.hpp>
-
 namespace service_announcment {
 
 namespace detail {
@@ -40,24 +39,22 @@ namespace detail {
 struct ServiceAnnouncement
 {
     ServiceAnnouncement(boost::asio::io_service& io, const connection_config& cfg)
-        : io_service(io), _socket(io, cfg),
-          announcement_timer(io, boost::asio::chrono::milliseconds(SERVICE_ANNOUCMENT_TIMER_PERIOD))
+        : io_service(io), _socket(io, cfg), announcement_timer(io, SERVICE_ANNOUCMENT_TIMER_PERIOD)
     {
     }
     void start_announce(const std::vector<service_message>& messages)
     {
         _services = messages;
-        announcement_timer.async_wait(
-          boost::bind(&ServiceAnnouncement::announce, this, boost::asio::placeholders::error));
+        announcement_timer.set_handler(std::bind(&ServiceAnnouncement::announce, this));
     }
 
   private:
     boost::asio::io_service& io_service;
     service_announcment::detail::ServiceAnnouncementSocket _socket;
-    boost::asio::steady_timer announcement_timer;
+    periodic_timer::PeriodicTimer announcement_timer;
     std::vector<service_message> _services;
 
-    void announce(const boost::system::error_code& /*e*/)
+    void announce()
     {
         static uint64_t counter{0};
         for (auto service : _services) {
@@ -65,11 +62,6 @@ struct ServiceAnnouncement
                 _socket.send_announcement(message_serdes::to_json(service));
             }
         }
-        announcement_timer.expires_at(
-          announcement_timer.expiry() +
-          boost::asio::chrono::milliseconds(SERVICE_ANNOUCMENT_TIMER_PERIOD));
-        announcement_timer.async_wait(
-          boost::bind(&ServiceAnnouncement::announce, this, boost::asio::placeholders::error));
         counter++;
     }
 };
