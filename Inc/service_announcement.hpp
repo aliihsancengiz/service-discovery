@@ -35,8 +35,7 @@ struct service_announcement
         static uint64_t counter{0};
         for (auto service : _services) {
             if (((counter * 1000) % service.ttl_msec()) == 0) {
-                // TODO : make buffer large enough to accomodate whole size
-                boost::array<char, 1024> send_buf = {{0}};
+                boost::array<char, SERVICE_SEND_BUFFER_LENGTH> send_buf = {{0}};
                 std::string message_str = message_serdes::to_json(service);
                 std::copy(message_str.begin(), message_str.end(), send_buf.begin());
 

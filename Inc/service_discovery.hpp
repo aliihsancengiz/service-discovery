@@ -65,12 +65,13 @@ struct service_discovery
     boost::asio::ip::udp::socket socket;
     const connection_config& _cfg;
     Cache<std::string, service_message, time_based_expiry_policy<service_message>> service_cache;
-    boost::array<char, 1024> recv_buf;
+    std::string recv_buffer_str;
     boost::asio::steady_timer cache_timer;
 
     void start_receive()
     {
-        socket.async_receive(boost::asio::buffer(recv_buf),
+		recv_buffer_str.resize(SERVICE_RECEIVE_BUFFER_LENGTH);
+        socket.async_receive(boost::asio::buffer(recv_buffer_str),
                              boost::bind(&service_discovery::handle_receive, this,
                                          boost::asio::placeholders::error,
                                          boost::asio::placeholders::bytes_transferred));
@@ -82,7 +83,7 @@ struct service_discovery
             return;
         }
 
-        auto msg_res = message_serdes::from_json<service_message>(std::string(recv_buf.data()));
+        auto msg_res = message_serdes::from_json<service_message>(recv_buffer_str);
         if (msg_res.is_some()) {
             auto msg = msg_res.unwrap();
             auto cache_key = msg.uuid();
@@ -98,7 +99,7 @@ struct service_discovery
                 notify_observer(msg, DiscoveryEvent::BIRTH);
             }
         }
-        recv_buf.assign(0);
+        recv_buffer_str.clear();
         start_receive();
     }
 
