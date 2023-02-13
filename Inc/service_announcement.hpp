@@ -42,7 +42,7 @@ struct ServiceAnnouncement
         : io_service(io), _socket(io, cfg), announcement_timer(io, SERVICE_ANNOUCMENT_TIMER_PERIOD)
     {
     }
-    void start_announce(const std::vector<service_message>& messages)
+    void start_announce(const std::vector<service_message::ServiceMessage>& messages)
     {
         _services = messages;
         announcement_timer.set_handler(std::bind(&ServiceAnnouncement::announce, this));
@@ -52,7 +52,7 @@ struct ServiceAnnouncement
     boost::asio::io_service& io_service;
     service_announcment::detail::ServiceAnnouncementSocket _socket;
     periodic_timer::PeriodicTimer announcement_timer;
-    std::vector<service_message> _services;
+    std::vector<service_message::ServiceMessage> _services;
 
     void announce()
     {

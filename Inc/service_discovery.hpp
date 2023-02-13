@@ -79,19 +79,19 @@ namespace detail {
 
 struct IServiceDiscovery
 {
-    typedef std::function<bool(const service_message&)> service_filter;
+    typedef std::function<bool(const service_message::ServiceMessage&)> service_filter;
     IServiceDiscovery(const service_filter& filter) : _filter(filter) {}
     IServiceDiscovery()
-        : _filter([](const service_message&) {
+        : _filter([](const service_message::ServiceMessage&) {
               return true;
           })
     {
     }
-    virtual void onNewServiceDiscovered(const service_message& new_service){};
-    virtual void onServiceGoodBye(const service_message& msg){};
-    virtual void onHeartBeat(const service_message& msg){};
+    virtual void onNewServiceDiscovered(const service_message::ServiceMessage& new_service){};
+    virtual void onServiceGoodBye(const service_message::ServiceMessage& msg){};
+    virtual void onHeartBeat(const service_message::ServiceMessage& msg){};
 
-    bool apply_filter(const service_message& msg)
+    bool apply_filter(const service_message::ServiceMessage& msg)
     {
         return _filter(msg);
     }
@@ -123,23 +123,23 @@ struct ServiceDiscovery : detail::IPacketObserver
     std::vector<std::shared_ptr<IServiceDiscovery>> observerMap;
     boost::asio::io_service& io_service;
     detail::DiscoverySocket _socket;
-    Cache<std::string, service_message, time_based_expiry_policy<service_message>> service_cache;
+    Cache<std::string, service_message::ServiceMessage,
+          time_based_expiry_policy<service_message::ServiceMessage>>
+      service_cache;
     periodic_timer::PeriodicTimer _cache_prune_timer;
 
     void process_packet(const std::string& recived_packet) override
     {
-        auto msg_res = message_serdes::from_json<service_message>(recived_packet);
+        auto msg_res = message_serdes::from_json<service_message::ServiceMessage>(recived_packet);
         if (msg_res.is_some()) {
             auto msg = msg_res.unwrap();
             auto cache_key = msg.uuid();
 
             if (service_cache.has(cache_key)) {
-                msg.update_last_accessed();
                 service_cache.update(cache_key, msg);
                 notify_observer(msg, detail::DiscoveryEvent::HEARTBEAT);
             } else {
                 // New service discovered, emplace it to cache and notify observers
-                msg.update_last_accessed();
                 service_cache.add(cache_key, msg);
                 notify_observer(msg, detail::DiscoveryEvent::BIRTH);
             }
@@ -153,7 +153,8 @@ struct ServiceDiscovery : detail::IPacketObserver
         }
     }
 
-    void notify_observer(const service_message& entry, const detail::DiscoveryEvent& ev)
+    void notify_observer(const service_message::ServiceMessage& entry,
+                         const detail::DiscoveryEvent& ev)
     {
         for (const auto& observer : observerMap) {
             if (!observer->apply_filter(entry)) {

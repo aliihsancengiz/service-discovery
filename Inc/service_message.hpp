@@ -1,25 +1,32 @@
 #pragma once
 
+#include "cache.hpp"
 #include "nlohman/json.hpp"
 #include "option.hpp"
 #include "utils.hpp"
 
 #include <boost/asio.hpp>
 
-struct service_message_metric
+namespace service_message {
+
+struct ServiceMessageMetric
 {
     std::string name;
     std::string value;
 };
 
-struct service_message
+namespace detail {
+
+}  // namespace detail
+
+struct ServiceMessage : last_access
 {
-    service_message(const std::string& name, const std::string domain, size_t ttl_msec)
+    ServiceMessage(const std::string& name, const std::string domain, size_t ttl_msec)
         : _name(name), _domain(domain), _ttl_msec(ttl_msec)
     {
         _uuid = uuid::generate_uuid_v4();
     }
-    service_message() = default;
+    ServiceMessage() = default;
 
     std::string name() const
     {
@@ -55,16 +62,7 @@ struct service_message
         _uuid = uuid;
     }
 
-    const auto& last_accessed() const
-    {
-        return _last_accessed;
-    }
-    void update_last_accessed()
-    {
-        _last_accessed = std::chrono::high_resolution_clock::now();
-    }
-
-    void add_metric(const service_message_metric& m)
+    void add_metric(const ServiceMessageMetric& m)
     {
         _metrics.emplace_back(m);
     }
@@ -78,13 +76,26 @@ struct service_message
     }
 
   private:
-    std::vector<service_message_metric> _metrics;
+    std::vector<ServiceMessageMetric> _metrics;
     std::string _name;
     std::string _uuid;
     std::string _domain;
     size_t _ttl_msec;
-    std::chrono::system_clock::time_point _last_accessed;
 };
+
+}  // namespace service_message
+
+template<>
+bool time_based_expiry_policy<service_message::ServiceMessage>::is_expired(
+  const service_message::ServiceMessage& msg)
+{
+    auto _now = std::chrono::high_resolution_clock::now();
+    auto dur = _now - msg.last_accessed();
+    if (std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() >= msg.ttl_msec()) {
+        return true;
+    }
+    return false;
+}
 
 namespace message_serdes {
 
@@ -95,10 +106,11 @@ template<typename Obj>
 std::string to_json(const Obj& obj);
 
 template<>
-Option<service_message> from_json<service_message>(const std::string& json_str)
+Option<service_message::ServiceMessage>
+  from_json<service_message::ServiceMessage>(const std::string& json_str)
 {
-    Option<service_message> ret;
-    service_message m;
+    Option<service_message::ServiceMessage> ret;
+    service_message::ServiceMessage m;
 
     try {
 
@@ -111,7 +123,7 @@ Option<service_message> from_json<service_message>(const std::string& json_str)
         if (json_obj.count("metrics")) {
             nlohmann::json metric_array = json_obj.at("metrics");
             for (int i = 0; i < metric_array.size(); i++) {
-                service_message_metric metric;
+                service_message::ServiceMessageMetric metric;
                 metric.name = metric_array[i].at("name").get<decltype(metric.name)>();
                 metric.value = metric_array[i].at("value").get<decltype(metric.value)>();
                 m.add_metric(metric);
@@ -125,7 +137,7 @@ Option<service_message> from_json<service_message>(const std::string& json_str)
 }
 
 template<>
-std::string to_json<service_message>(const service_message& obj)
+std::string to_json<service_message::ServiceMessage>(const service_message::ServiceMessage& obj)
 {
     nlohmann::json json_obj;
     json_obj["name"] = obj.name();
