@@ -10,3 +10,4 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(examples)
 add_subdirectory(Tests)
+add_subdirectory(rest-api)
