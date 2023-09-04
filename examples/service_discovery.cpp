@@ -7,18 +7,32 @@
 #include <boost/bind.hpp>
 #include <iostream>
 
+namespace {
+boost::asio::io_service io_service;
+}
+
+void signal_handler(int signal)
+{
+    if (!io_service.stopped()) {
+        io_service.stop();
+    }
+}
 std::string print_service_message(const service_message::ServiceMessage& msg)
 {
     std::stringstream ss;
-    ss << "Service UUID : " << msg.uuid().substr(0, 5) << std::endl;
+    ss << "Service UUID : " << msg.uuid() << std::endl;
     for (auto m : msg.metrics()) {
         ss << "\t" << m.name << ":" << m.value << std::endl;
     }
     return ss.str();
 }
+
 struct ServiceDiscoveredLogger : service_discovery::IServiceDiscovery
 {
-    ServiceDiscoveredLogger(const service_filter& filter) : service_discovery::IServiceDiscovery(filter) {}
+    ServiceDiscoveredLogger(const service_filter& filter)
+        : service_discovery::IServiceDiscovery(filter)
+    {
+    }
     void onNewServiceDiscovered(const service_message::ServiceMessage& msg) override
     {
         std::cout << "DISCOVERED. " << print_service_message(msg);
@@ -36,14 +50,14 @@ struct ServiceDiscoveredLogger : service_discovery::IServiceDiscovery
 int main()
 {
     try {
-        boost::asio::io_service io_service;
+        std::signal(SIGINT, signal_handler);
+
         connection_config cfg("224.0.0.251", 1223);
         service_discovery::ServiceDiscovery disc(io_service, cfg);
 
         disc.register_observer(
           std::make_shared<ServiceDiscoveredLogger>([](const service_message::ServiceMessage& msg) {
-              //   return msg.domain == "admin.udp.local";
-              return true;
+              return msg.domain() == "admin.udp.local";
           }));
 
         io_service.run();
