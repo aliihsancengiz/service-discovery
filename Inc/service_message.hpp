@@ -26,7 +26,7 @@ struct ServiceMessage : last_access
     {
         _uuid = uuid::generate_uuid_v4();
     }
-    ServiceMessage() = default;
+    explicit ServiceMessage() = default;
 
     std::string name() const
     {
@@ -86,15 +86,15 @@ struct ServiceMessage : last_access
 }  // namespace service_message
 
 template<>
-bool time_based_expiry_policy<service_message::ServiceMessage>::is_expired(
+bool time_based_expiry_policy<service_message::ServiceMessage>::is_valid(
   const service_message::ServiceMessage& msg)
 {
     auto _now = std::chrono::high_resolution_clock::now();
     auto dur = _now - msg.last_accessed();
     if (std::chrono::duration_cast<std::chrono::milliseconds>(dur).count() >= msg.ttl_msec()) {
-        return true;
+        return false;
     }
-    return false;
+    return true;
 }
 
 namespace message_serdes {

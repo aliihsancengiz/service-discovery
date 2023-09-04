@@ -11,6 +11,7 @@ struct connection_config
           announce_ep(boost::asio::ip::address::from_string(ip), port)
     {
     }
+    ~connection_config() = default;
 
     auto& multicast_address() const
     {
@@ -20,10 +21,10 @@ struct connection_config
     {
         return listen_ep;
     }
-	auto& announce_addr() const
-	{
-		return announce_ep;
-	}
+    auto& announce_addr() const
+    {
+        return announce_ep;
+    }
 
   private:
     boost::asio::ip::address multicast_addr;

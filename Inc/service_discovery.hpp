@@ -114,6 +114,7 @@ struct ServiceDiscovery : detail::IPacketObserver
     {
         _socket.reset_packet_observer();
     }
+
     void register_observer(const std::shared_ptr<IServiceDiscovery>& cb_obj)
     {
         observerMap.push_back(cb_obj);
